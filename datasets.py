@@ -15,6 +15,42 @@ from timm.data.constants import \
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.data import create_transform
 
+################################################################################
+################################################################################
+################################################################################
+import pandas as pd
+from torch.utils.data import Dataset
+
+class CustomDataset(Dataset):
+    def __init__(self, is_train):
+        base_path = "/workspace/face/mobilenetv3/sorted_dataset"
+        if is_train:
+            self.data = pd.read_csv(os.path.join(base_path, "train", "label.csv"))
+            self.root = os.path.join(base_path, "train")
+        else:
+            self.data = pd.read_csv(os.path.join(base_path, "validation", "label.csv"))
+            self.root = os.path.join(base_path, "validation")
+
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            # mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
+        ])
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        img_path = os.path.join(self.root, self.data.iloc[index, 0])
+        image = Image.open(img_path).convert('RGB')
+        image = self.transform(image)
+
+        label = torch.tensor(self.data.iloc[index, 1:].values.astype(float), dtype=torch.float32)
+
+        return image, label
+################################################################################
+################################################################################
+################################################################################
 
 class ImageFolderLMDB(torch.utils.data.Dataset):
     def __init__(self, db_path, transform=None):

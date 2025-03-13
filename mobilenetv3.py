@@ -6,7 +6,7 @@ Mobile Networks for Classification, Detection and Segmentation" for more details
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
-
+import torch
 
 
 class hswish(nn.Module):
@@ -123,7 +123,21 @@ class MobileNetV3_Small(nn.Module):
         self.bn3 = nn.BatchNorm1d(1280)
         self.hs3 = act(inplace=True)
         self.drop = nn.Dropout(0.2)
-        self.linear4 = nn.Linear(1280, num_classes)
+
+        ################################################################################
+        ################################################################################
+        ################################################################################
+        # self.linear4 = nn.Linear(1280, num_classes)
+
+        # Age Regression
+        self.reg = nn.Linear(1280, 1)
+
+        # Gender, Glasses, Hat, Mask Multi-Labeling
+        self.multilabel = nn.Linear(1280, 4)        
+        ################################################################################
+        ################################################################################
+        ################################################################################
+        
         self.init_params()
 
     def init_params(self):
@@ -148,7 +162,21 @@ class MobileNetV3_Small(nn.Module):
         out = self.gap(out).flatten(1)
         out = self.drop(self.hs3(self.bn3(self.linear3(out))))
 
-        return self.linear4(out)
+        ################################################################################
+        ################################################################################
+        ################################################################################
+        # return self.linear4(out)
+
+        reg_out = self.reg(out)
+        reg_out = torch.relu(reg_out)
+
+        multilabel_out = self.multilabel(out)
+
+        return torch.cat([reg_out, multilabel_out], dim=1)
+
+        ################################################################################
+        ################################################################################
+        ################################################################################
 
 
 class MobileNetV3_Large(nn.Module):

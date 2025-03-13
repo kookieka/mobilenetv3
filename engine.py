@@ -48,14 +48,32 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
 
+        ################################################################################
+        ################################################################################
+        ################################################################################
+        # if use_amp:
+        #     with torch.cuda.amp.autocast():
+        #         output = model(samples)
+        #         loss = criterion(output, targets)
+        # else: # full precision
+        #     output = model(samples)
+        #     loss = criterion(output, targets)
+
+        L1_loss = torch.nn.L1Loss()
+        BCE_loss = torch.nn.BCEWithLogitsLoss()
+
         if use_amp:
             with torch.cuda.amp.autocast():
                 output = model(samples)
-                loss = criterion(output, targets)
+                loss = L1_loss(output[:, :1], targets[:, :1]) + BCE_loss(output[:, 1:], targets[:, 1:])
         else: # full precision
             output = model(samples)
-            loss = criterion(output, targets)
-
+            loss = L1_loss(output[:, :1], targets[:, :1]) + BCE_loss(output[:, 1:], targets[:, 1:])
+        
+        ################################################################################
+        ################################################################################
+        ################################################################################
+        
         loss_value = loss.item()
 
         if not math.isfinite(loss_value): # this could trigger if using AMP
@@ -84,10 +102,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         torch.cuda.synchronize()
 
+
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        ##########################################################################################################################################
         if mixup_fn is None:
-            class_acc = (output.max(-1)[-1] == targets).float().mean()
+            # class_acc = (output.max(-1)[-1] == targets).float().mean()
+            class_acc = 3
         else:
             class_acc = None
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+
         metric_logger.update(loss=loss_value)
         metric_logger.update(class_acc=class_acc)
         min_lr = 10.
@@ -159,12 +186,32 @@ def evaluate(data_loader, model, device, use_amp=False):
             output = model(images)
             loss = criterion(output, target)
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        # acc1, acc5 = accuracy(output, target, topk=(1, 5))
+
+        total_score = 0
+        for idx, row in enumerate(output):
+            score = 0
+            age = round(min(row[0].item(), 100))
+            score += 20*(abs(age - target[idx][0]) <= 10)
+            score += 20*torch.eq(torch.round(torch.sigmoid(row[1:])), target[idx][1:]).sum()
+            total_score += score
+        acc = total_score/output.shape[0]
+
 
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        #metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
+        #metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        metric_logger.meters['acc1'].update(acc, n=batch_size)
+        metric_logger.meters['acc5'].update(3, n=batch_size)
+
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'

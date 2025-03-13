@@ -24,7 +24,7 @@ from timm.utils import ModelEma
 from optim_factory import create_optimizer, LayerDecayValueAssigner
 from mobilenetv3 import MobileNetV3_Small, MobileNetV3_Large
 
-from datasets import build_dataset
+from datasets import build_dataset, CustomDataset
 from engine import train_one_epoch, evaluate
 
 from utils import NativeScalerWithGradNormCount as NativeScaler
@@ -210,12 +210,23 @@ def main(args):
     np.random.seed(seed)
     cudnn.benchmark = True
 
-    dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
-    if args.disable_eval:
-        args.dist_eval = False
-        dataset_val = None
-    else:
-        dataset_val, _ = build_dataset(is_train=False, args=args)
+
+    ################################################################################
+    ################################################################################
+    ################################################################################
+    # dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
+    # if args.disable_eval:
+    #     args.dist_eval = False
+    #     dataset_val = None
+    # else:
+    #     dataset_val, _ = build_dataset(is_train=False, args=args)
+
+    dataset_train = CustomDataset(True)
+    dataset_val = CustomDataset(False)
+
+    ################################################################################
+    ################################################################################
+    ################################################################################
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
@@ -389,6 +400,7 @@ def main(args):
             log_writer.set_step(epoch * num_training_steps_per_epoch * args.update_freq)
         if wandb_logger:
             wandb_logger.set_steps()
+        ################################################################################
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,
@@ -397,12 +409,14 @@ def main(args):
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
             use_amp=args.use_amp
         )
+        ################################################################################
         if args.output_dir and args.save_ckpt:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
                 utils.save_model(
                     args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                     loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
+            ################################################################################
             test_stats = evaluate(data_loader_val, model, device, use_amp=args.use_amp)
             print(f"Accuracy of the model on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
             if max_accuracy < test_stats["acc1"]:
@@ -412,6 +426,7 @@ def main(args):
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                         loss_scaler=loss_scaler, epoch="best", model_ema=model_ema)
             print(f'Max accuracy: {max_accuracy:.2f}%')
+            ################################################################################
 
             if log_writer is not None:
                 log_writer.update(test_acc1=test_stats['acc1'], head="perf", step=epoch)
