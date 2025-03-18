@@ -127,13 +127,13 @@ class MobileNetV3_Small(nn.Module):
         ################################################################################
         ################################################################################
         ################################################################################
-        # self.linear4 = nn.Linear(1280, num_classes)
+        self.linear4 = nn.Linear(1280, 5)
 
-        # Age Regression
-        self.reg = nn.Linear(1280, 1)
+        # # Age Regression
+        # self.reg = nn.Linear(1280, 1)
 
-        # Gender, Glasses, Hat, Mask Multi-Labeling
-        self.multilabel = nn.Linear(1280, 4)        
+        # # Gender, Glasses, Hat, Mask Multi-Labeling
+        # self.multilabel = nn.Linear(1280, 4)        
         ################################################################################
         ################################################################################
         ################################################################################
@@ -165,14 +165,14 @@ class MobileNetV3_Small(nn.Module):
         ################################################################################
         ################################################################################
         ################################################################################
-        # return self.linear4(out)
+        return self.linear4(out)
 
-        reg_out = self.reg(out)
-        reg_out = torch.relu(reg_out)
+        # reg_out = self.reg(out)
+        # reg_out = torch.relu(reg_out)
 
-        multilabel_out = self.multilabel(out)
+        # multilabel_out = self.multilabel(out)
 
-        return torch.cat([reg_out, multilabel_out], dim=1)
+        # return torch.cat([reg_out, multilabel_out], dim=1)
 
         ################################################################################
         ################################################################################
