@@ -23,7 +23,7 @@ from torch.utils.data import Dataset
 
 class CustomDataset(Dataset):
     def __init__(self, is_train):
-        base_path = "/workspace/face/mobilenetv3/sorted_dataset"
+        base_path = "/workspace/face/sorted_dataset"
         if is_train:
             self.data = pd.read_csv(os.path.join(base_path, "train", "label.csv"))
             self.root = os.path.join(base_path, "train")

@@ -14,6 +14,13 @@ from timm.utils import accuracy, ModelEma
 
 import utils
 
+
+from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
+from datasets import CustomDataset
+from torch.utils.data import DataLoader
+
+
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
@@ -170,51 +177,109 @@ def evaluate(data_loader, model, device, use_amp=False):
 
     # switch to evaluation mode
     model.eval()
-    for batch in metric_logger.log_every(data_loader, 10, header):
-        images = batch[0]
-        target = batch[-1]
 
+
+
+
+    ##########################################################################################################################################
+    ##########################################################################################################################################
+    ##########################################################################################################################################    
+    # for batch in metric_logger.log_every(data_loader, 10, header):
+    #     images = batch[0]
+    #     target = batch[-1]
+
+    #     images = images.to(device, non_blocking=True)
+    #     target = target.to(device, non_blocking=True)
+
+    #     # compute output
+    #     if use_amp:
+    #         with torch.cuda.amp.autocast():
+    #             output = model(images)
+    #             loss = criterion(output, target)
+    #     else:
+    #         output = model(images)
+    #         loss = criterion(output, target)
+
+    #     ##########################################################################################################################################
+    #     ##########################################################################################################################################
+    #     ##########################################################################################################################################
+    #     # acc1, acc5 = accuracy(output, target, topk=(1, 5))
+
+    #     total_score = 0
+    #     for idx, row in enumerate(output):
+    #         score = 0
+    #         age = round(min(row[0].item(), 100))
+    #         score += 20*(abs(age - target[idx][0]) <= 10)
+    #         score += 20*torch.eq(torch.round(torch.sigmoid(row[1:])), target[idx][1:]).sum()
+    #         total_score += score
+    #     acc = total_score/output.shape[0]
+
+
+    #     batch_size = images.shape[0]
+    #     metric_logger.update(loss=loss.item())
+    #     #metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
+    #     #metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+    #     metric_logger.meters['acc1'].update(acc, n=batch_size)
+    #     metric_logger.meters['acc5'].update(3, n=batch_size)
+
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+        ##########################################################################################################################################
+    ##########################################################################################################################################
+    ##########################################################################################################################################
+    ##########################################################################################################################################    
+
+    dict_face = {}
+
+    val_dataset = CustomDataset(False)
+    val_loader = DataLoader(val_dataset, batch_size=550, num_workers=10, pin_memory=True, drop_last=False)
+    for images, targets in val_loader:
         images = images.to(device, non_blocking=True)
-        target = target.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
 
-        # compute output
+        L1_loss = torch.nn.L1Loss()
+        BCE_loss = torch.nn.BCEWithLogitsLoss()
+
         if use_amp:
             with torch.cuda.amp.autocast():
                 output = model(images)
-                loss = criterion(output, target)
-        else:
+                loss = L1_loss(output[:, :1], targets[:, :1]) + BCE_loss(output[:, 1:], targets[:, 1:])
+        else: # full precision
             output = model(images)
-            loss = criterion(output, target)
-
-        ##########################################################################################################################################
-        ##########################################################################################################################################
-        ##########################################################################################################################################
-        # acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
-        total_score = 0
-        for idx, row in enumerate(output):
-            score = 0
-            age = round(min(row[0].item(), 100))
-            score += 20*(abs(age - target[idx][0]) <= 10)
-            score += 20*torch.eq(torch.round(torch.sigmoid(row[1:])), target[idx][1:]).sum()
-            total_score += score
-        acc = total_score/output.shape[0]
+            loss = L1_loss(output[:, :1], targets[:, :1]) + BCE_loss(output[:, 1:], targets[:, 1:])
 
 
-        batch_size = images.shape[0]
-        metric_logger.update(loss=loss.item())
-        #metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        #metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
-        metric_logger.meters['acc1'].update(acc, n=batch_size)
-        metric_logger.meters['acc5'].update(3, n=batch_size)
+        # age mae
+        age_mae = torch.nn.L1Loss()(output[:, 0], targets[:, 0]).item()
+        dict_face['age'] = age_mae
 
-        ##########################################################################################################################################
-        ##########################################################################################################################################
-        ##########################################################################################################################################
+        # gender, glasses, hat, mask
+        for i, face_attribute in [(1, "gender"), (2, "glasses"), (3, "hat"), (4, "mask")]:
+            a = (output[:, 1] >= 0).int().to('cuda:0')
+            b = (targets[:, 1]).to('cuda:0')
+
+            BinAcc = BinaryAccuracy().to('cuda:0')(a, b).item()
+            BinPre = BinaryPrecision().to('cuda:0')(a, b).item()
+            BinRec = BinaryRecall().to('cuda:0')(a, b).item()
+            BinF1 = BinaryF1Score().to('cuda:0')(a, b).item()
+            confmat = BinaryConfusionMatrix().to('cuda:0')(a, b).to('cpu').numpy().tolist()
+
+            dict_face[face_attribute] = {
+                'BinAcc' : BinAcc,
+                'BinPre' : BinPre,
+                'BinRec' : BinRec,
+                'BinF1' : BinF1,
+                'confmat' : confmat
+            }
+
+    batch_size = images.shape[0]
+    metric_logger.update(loss=loss.item())
+    metric_logger.meters['acc1'].update(3, n=batch_size)
+    metric_logger.meters['acc5'].update(3, n=batch_size)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    
+    return {**dict_face, **{k: meter.global_avg for k, meter in metric_logger.meters.items()}}

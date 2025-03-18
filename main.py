@@ -29,6 +29,8 @@ from engine import train_one_epoch, evaluate
 
 from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
+import json
+
 
 def str2bool(v):
     """
@@ -387,7 +389,14 @@ def main(args):
         print(f"Accuracy of the network on {len(dataset_val)} test images: {test_stats['acc1']:.5f}%")
         return
 
+    ################################################################################
+    ################################################################################
+    ################################################################################
     max_accuracy = 0.0
+    min_loss = float('inf')
+    ################################################################################
+    ################################################################################
+    ################################################################################
     if args.model_ema and args.model_ema_eval:
         max_accuracy_ema = 0.0
 
@@ -417,15 +426,48 @@ def main(args):
                     loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
             ################################################################################
+            ################################################################################
+            ################################################################################
+            # test_stats = evaluate(data_loader_val, model, device, use_amp=args.use_amp)
+            
+            # print(f"Accuracy of the model on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+            # if max_accuracy < test_stats["acc1"]:
+            #     max_accuracy = test_stats["acc1"]
+            #     if args.output_dir and args.save_ckpt:
+            #         utils.save_model(
+            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            #             loss_scaler=loss_scaler, epoch="best", model_ema=model_ema)
+            # print(f'Max accuracy: {max_accuracy:.2f}%')
+
             test_stats = evaluate(data_loader_val, model, device, use_amp=args.use_amp)
-            print(f"Accuracy of the model on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-            if max_accuracy < test_stats["acc1"]:
-                max_accuracy = test_stats["acc1"]
+            print('-------------------------------------------------------------------------')
+            print(f'Metrics of the model on the {len(dataset_val)} test images')
+            print("Age")
+            print(f"    MAE : {test_stats['age']:.02f}")
+            for face_attribute in ["gender", "glasses", "hat", "mask"]:
+                print(face_attribute.capitalize())
+                for key in ['BinAcc', 'BinPre', 'BinRec', 'BinF1']:
+                    print(f"    {key} : {100*test_stats[face_attribute][key]:.02f}%")
+                print(f"    confmat : {test_stats[face_attribute]['confmat']}")
+
+
+            if min_loss > test_stats["loss"]:
+                min_loss = test_stats["loss"]
                 if args.output_dir and args.save_ckpt:
                     utils.save_model(
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                         loss_scaler=loss_scaler, epoch="best", model_ema=model_ema)
-            print(f'Max accuracy: {max_accuracy:.2f}%')
+                test_stats['epoch'] = epoch
+                with open("best.txt", "w") as f:
+                    json.dump(test_stats, f)
+            print(f'Min Loss: {min_loss:.2f}')
+            print('-------------------------------------------------------------------------')
+            test_stats = {k: test_stats[k] for k in ['loss', 'acc1', 'acc5']}
+
+
+            
+            ################################################################################
+            ################################################################################
             ################################################################################
 
             if log_writer is not None:
